@@ -1,9 +1,6 @@
 const readLine = require('readline');
 const f = require('fs');
 var file = './data/input.txt';
-const readDir = './persistence/read/';
-const writeDir = './persistence/write/';
-const tmpDir = './persistence/tmp/';
 var rl = readLine.createInterface({
   input: f.createReadStream(file),
   output: process.stdout,
@@ -13,13 +10,14 @@ var rl = readLine.createInterface({
 let strang = "";
 let rules = [];
 let counts = [];
+let pairs = [];
 rl.on('line', function (text) {
   if (text.trim()) {
     let splitLine = text.trim().split(" -> ");
     if (splitLine[0] === text.trim()) {
       text.trim().split('').forEach((char) => {
         strang += char;
-        updateCounts(char);
+        updateCounts(char, 1);
       });
     } else {
       //its a rule
@@ -29,62 +27,9 @@ rl.on('line', function (text) {
 });
 
 rl.on('close', function () {
-  f.writeFileSync(readDir + 'stringholder.txt', strang);
-  insertByRules();
-});
-
-function insertByRules() {
-  for (let j = 0; j < 10; j++) {
-    console.log('loop: ' + j);
-    let strandedInsert = "";
-    let filenames = f.readdirSync(readDir);
-
-    filenames.forEach(function (filename) {
-
-      const options = { encoding: 'utf-8', flag: 'r' };
-      const stringToCheck = f.readFileSync(readDir + filename, options);
-      let newStrang = strandedInsert;
-      if (strandedInsert === "") {
-        newStrang = stringToCheck.charAt(0);
-      }
-
-      for (let i = 0; i < stringToCheck.length - 1; i++) {
-        let pair = stringToCheck[i] + stringToCheck[i + 1];
-
-        rules.forEach((rule) => {
-          if (rule.pair === pair) {
-            newStrang = newStrang + rule.insert + stringToCheck[i + 1];
-            updateCounts(rule.insert);
-            if (newStrang.length > 999999 || i === stringToCheck.length - 2) {
-              f.writeFileSync(writeDir + filename + i, newStrang);
-              if (stringToCheck[i + 2]) {
-                newStrang = stringToCheck[i + 2];
-              }
-            }
-          }
-        });
-      }
-    });
-
-    f.renameSync(readDir, tmpDir);
-    f.renameSync(writeDir, readDir);
-    f.renameSync(tmpDir, writeDir);
-  }
-  console.log(counts);
-}
-
-function updateCounts(letter) {
-  let foundCount = false;
-  counts.forEach(count => {
-    if (count.letter === letter) {
-      foundCount = true;
-      count.count = count.count + 1;
-    }
-  });
-  if (!foundCount) {
-    counts.push({ letter: letter, count: 1 });
-  }
-  let least = 9999999999;
+  insertByRulesFaster();
+  // make sure that this is really larger than the values
+  let least = 99999999999999999999999999;
   let most = 0;
   counts.forEach(count => {
     if (count.count < least) {
@@ -95,5 +40,63 @@ function updateCounts(letter) {
     }
 
   });
-  //console.log(most - least);
+  console.log(most - least);
+});
+function insertByRulesFaster() {
+  for (let i = 0; i < strang.length - 1; i++) {
+    let pairString = strang[i] + strang[i + 1];
+    let pairFound = false;
+    pairs.forEach(pairObj => {
+      if (pairObj.pair === pairString) {
+        pairFound = true;
+        pairObj.count++;
+      }
+    });
+    if (!pairFound) {
+      pairs.push({ pair: pairString, count: 1 });
+    }
+  }
+
+  for (let j = 0; j < 40; j++) {
+    let newPairs = [];
+    pairs.forEach(pair => {
+      rules.forEach((rule) => {
+        let foundPairRule = false;
+        let foundRulePair = false;
+        if (rule.pair === pair.pair && pair.count > 0) {
+          updateCounts(rule.insert, pair.count);
+          newPairs.forEach(pairsToCheck => {
+            if (pairsToCheck.pair === pair.pair.split("")[0] + rule.insert) {
+              pairsToCheck.count = pairsToCheck.count + pair.count;
+              foundPairRule = true;
+            }
+            if (pairsToCheck.pair === rule.insert + pair.pair.split("")[1]) {
+              pairsToCheck.count = pairsToCheck.count + pair.count;
+              foundRulePair = true;
+            }
+          });
+          if (!foundPairRule) {
+            newPairs.push({ pair: pair.pair.split("")[0] + rule.insert, count: pair.count });
+          }
+          if (!foundRulePair) {
+            newPairs.push({ pair: rule.insert + pair.pair.split("")[1], count: pair.count });
+          }
+        }
+      });
+    });
+    pairs = newPairs;
+  }
+}
+
+function updateCounts(letter, amount) {
+  let foundCount = false;
+  counts.forEach(count => {
+    if (count.letter === letter) {
+      foundCount = true;
+      count.count = count.count + amount;
+    }
+  });
+  if (!foundCount) {
+    counts.push({ letter: letter, count: amount });
+  }
 }
